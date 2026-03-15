@@ -13,10 +13,17 @@ export default function Home() {
   const lastSendRef = useRef<number>(0);
   const audioQueueRef = useRef<Blob[]>([]);
   const [playingUrl, setPlayingUrl] = useState<string | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const dryGainRef = useRef<GainNode | null>(null);
+  const wetGainRef = useRef<GainNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const [vu, setVu] = useState(0);
+  const [lightColor, setLightColor] = useState("#9f7aea");
 
   useEffect(() => {
     return () => {
       stopStreaming();
+      audioCtxRef.current?.close();
     };
   }, []);
 
@@ -65,6 +72,7 @@ export default function Home() {
     setStatus("connecting");
     appendLog("Requesting mic access");
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    setupLocalFx(stream);
     const mr = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
     mediaRecorderRef.current = mr;
     connectWs();
@@ -78,6 +86,93 @@ export default function Home() {
     mr.start(200); // 200ms chunks
     setStatus("recording");
     appendLog("Recording started");
+  };
+
+  const setupLocalFx = (stream: MediaStream) => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new AudioContext();
+    }
+    const ctx = audioCtxRef.current;
+    const source = ctx.createMediaStreamSource(stream);
+
+    // Dry path (before)
+    const dryGain = ctx.createGain();
+    dryGain.gain.value = 0.9;
+    dryGainRef.current = dryGain;
+
+    // Wet path (after) with simple chain: highpass -> compressor -> delay -> reverb
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 120;
+
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -25;
+    comp.knee.value = 20;
+    comp.ratio.value = 4;
+    comp.attack.value = 0.003;
+    comp.release.value = 0.15;
+
+    const delay = ctx.createDelay();
+    delay.delayTime.value = 0.045;
+
+    const reverb = ctx.createConvolver();
+    reverb.buffer = makeImpulseResponse(ctx);
+
+    const wetGain = ctx.createGain();
+    wetGain.gain.value = 0.8;
+    wetGainRef.current = wetGain;
+
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyserRef.current = analyser;
+
+    // Routing
+    source.connect(dryGain).connect(ctx.destination);
+    source.connect(hp).connect(comp).connect(delay).connect(reverb).connect(wetGain).connect(ctx.destination);
+    source.connect(analyser);
+
+    animateVU();
+  };
+
+  const makeImpulseResponse = (ctx: AudioContext) => {
+    const length = ctx.sampleRate * 0.9;
+    const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
+    for (let channel = 0; channel < 2; channel++) {
+      const buf = impulse.getChannelData(channel);
+      for (let i = 0; i < length; i++) {
+        buf[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 3.5);
+      }
+    }
+    return impulse;
+  };
+
+  const animateVU = () => {
+    if (!analyserRef.current) return;
+    const analyser = analyserRef.current;
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const loop = () => {
+      analyser.getByteTimeDomainData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = data[i] - 128;
+        sum += v * v;
+      }
+      const rms = Math.sqrt(sum / data.length) / 128; // 0..1
+      setVu(rms);
+      // simple beat-ish pulse to drive light color
+      const hue = Math.min(300, 180 + rms * 400);
+      setLightColor(`hsl(${hue}, 85%, 65%)`);
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  };
+
+  const setFxMix = (value: number) => {
+    if (!dryGainRef.current || !wetGainRef.current) return;
+    const dry = Math.max(0, Math.min(1, 1 - value));
+    const wet = Math.max(0, Math.min(1, value));
+    dryGainRef.current.gain.value = dry;
+    wetGainRef.current.gain.value = wet;
   };
 
   const stopStreaming = () => {
@@ -102,7 +197,7 @@ export default function Home() {
     >
       <h1 style={{ fontSize: 32, marginBottom: 12 }}>AI Karaoke Remixer</h1>
       <p style={{ opacity: 0.8, marginBottom: 24 }}>
-        WebRTC/WebSocket prototipi — şu an echo modunda, stil transferi sonraki adım.
+        WebRTC/WebSocket prototipi + tarayıcı içi “After” efekt zinciri (reverb + delay + comp).
       </p>
 
       <div className="grid" style={{ gridTemplateColumns: "1.2fr 1fr" }}>
@@ -127,13 +222,48 @@ export default function Home() {
 
           <div style={{ marginTop: 20 }}>
             <h3>Before / After</h3>
-            <audio
-              controls
-              src={playingUrl ?? undefined}
-              style={{ width: "100%", marginTop: 8 }}
+            <audio controls src={playingUrl ?? undefined} style={{ width: "100%", marginTop: 8 }} />
+            <p style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
+              “Before”: doğrudan monitor; “After”: reverb+delay+compressor (basit stil efekti).
+            </p>
+            <label style={{ display: "block", fontSize: 12, opacity: 0.8 }}>
+              After Mix
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                defaultValue={0.6}
+                onChange={(e) => setFxMix(parseFloat(e.target.value))}
+                style={{ width: "100%" }}
+              />
+            </label>
+          </div>
+
+          <div style={{ marginTop: 20 }}>
+            <h3>Işık Önizleme</h3>
+            <div
+              style={{
+                height: 24,
+                borderRadius: 12,
+                background: `linear-gradient(90deg, ${lightColor}, #111)`,
+                boxShadow: `0 0 ${12 + vu * 24}px ${lightColor}`,
+                transition: "background 80ms linear, box-shadow 80ms linear",
+              }}
+            />
+            <div
+              style={{
+                marginTop: 8,
+                height: 8,
+                width: `${Math.min(100, Math.round(vu * 140))}%`,
+                maxWidth: "100%",
+                background: "#22c55e",
+                borderRadius: 4,
+                transition: "width 60ms linear",
+              }}
             />
             <p style={{ fontSize: 12, opacity: 0.7 }}>
-              Şimdilik echo; stil transferi eklendiğinde “After” kanalı olacak.
+              RMS tabanlı vurgu; backend beat/onset geldiğinde DMX/WLED’e gönderilecek.
             </p>
           </div>
         </section>

@@ -65,11 +65,22 @@ export default function Home() {
     mediaRecorderRef.current = mr;
     connectWs();
     mr.ondataavailable = (e) => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
       if (e.data.size > 0) {
-        lastSendRef.current = performance.now();
-        wsRef.current.send(e.data);
         recordedChunksRef.current.push(e.data);
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          lastSendRef.current = performance.now();
+          wsRef.current.send(e.data);
+        }
+      }
+    };
+    mr.onstop = () => {
+      if (recordedChunksRef.current.length > 0) {
+        const blob = new Blob(recordedChunksRef.current, { type: "audio/webm" });
+        setPlayingUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return URL.createObjectURL(blob);
+        });
+        recordedChunksRef.current = [];
       }
     };
     mr.start(200); // 200ms chunks
@@ -165,19 +176,11 @@ export default function Home() {
   };
 
   const stopStreaming = () => {
-    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current?.stop(); // triggers onstop to build playback URL
     mediaRecorderRef.current = null;
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
-    }
-    if (recordedChunksRef.current.length > 0) {
-      const blob = new Blob(recordedChunksRef.current, { type: "audio/webm" });
-      setPlayingUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return URL.createObjectURL(blob);
-      });
-      recordedChunksRef.current = [];
     }
     setStatus("idle");
     appendLog("Stopped");

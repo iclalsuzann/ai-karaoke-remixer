@@ -17,6 +17,7 @@ export default function Home() {
   const dryGainRef = useRef<GainNode | null>(null);
   const wetGainRef = useRef<GainNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const recordBusRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const [vu, setVu] = useState(0);
   const [lightColor, setLightColor] = useState("#9f7aea");
   const [monitorOn, setMonitorOn] = useState(true);
@@ -73,8 +74,8 @@ export default function Home() {
     appendLog("Requesting mic access");
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     recordedChunksRef.current = [];
-    setupLocalFx(stream);
-    const mr = new MediaRecorder(stream, {
+    const recordStream = setupLocalFx(stream);
+    const mr = new MediaRecorder(recordStream, {
       mimeType: pickMimeType(),
       audioBitsPerSecond: 256_000,
     });
@@ -109,6 +110,8 @@ export default function Home() {
       audioCtxRef.current = new AudioContext();
     }
     const ctx = audioCtxRef.current;
+    const recordBus = ctx.createMediaStreamDestination();
+    recordBusRef.current = recordBus;
     const source = ctx.createMediaStreamSource(stream);
 
     // Dry path (before)
@@ -143,11 +146,19 @@ export default function Home() {
     analyserRef.current = analyser;
 
     // Routing
+    // Monitor to speakers
     source.connect(dryGain).connect(ctx.destination);
     source.connect(hp).connect(comp).connect(delay).connect(reverb).connect(wetGain).connect(ctx.destination);
+
+    // Record bus (clean after FX)
+    source.connect(dryGain);
+    hp.connect(comp).connect(delay).connect(reverb).connect(wetGain);
+    dryGain.connect(recordBus);
+    wetGain.connect(recordBus);
     source.connect(analyser);
 
     animateVU();
+    return recordBus.stream;
   };
 
   const makeImpulseResponse = (ctx: AudioContext) => {
@@ -276,8 +287,8 @@ export default function Home() {
 
   const toggleMonitor = (checked: boolean) => {
     setMonitorOn(checked);
-    dryGainRef.current && (dryGainRef.current.gain.value = checked ? dryGainRef.current.gain.value || 0.9 : 0);
-    wetGainRef.current && (wetGainRef.current.gain.value = checked ? wetGainRef.current.gain.value || 0.8 : 0);
+    dryGainRef.current && (dryGainRef.current.gain.value = checked ? 0.9 : 0);
+    wetGainRef.current && (wetGainRef.current.gain.value = checked ? 0.8 : 0);
   };
 
   return (

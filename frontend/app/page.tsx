@@ -18,12 +18,14 @@ export default function Home() {
   const wetGainRef = useRef<GainNode | null>(null);
   const recordDryGainRef = useRef<GainNode | null>(null);
   const recordWetGainRef = useRef<GainNode | null>(null);
+  const preGainRef = useRef<GainNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const recordBusRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const mixRef = useRef<number>(0.6);
   const [vu, setVu] = useState(0);
   const [lightColor, setLightColor] = useState("#9f7aea");
   const [monitorOn, setMonitorOn] = useState(true);
+  const [inputGain, setInputGain] = useState(1.4);
 
   useEffect(() => {
     return () => {
@@ -117,6 +119,11 @@ export default function Home() {
     recordBusRef.current = recordBus;
     const source = ctx.createMediaStreamSource(stream);
 
+    // Input pre-gain
+    const preGain = ctx.createGain();
+    preGain.gain.value = inputGain;
+    preGainRef.current = preGain;
+
     // Monitor gains (to speakers)
     const dryGain = ctx.createGain();
     dryGain.gain.value = 0.9;
@@ -156,15 +163,15 @@ export default function Home() {
 
     // Routing
     // Monitor to speakers
-    source.connect(dryGain).connect(ctx.destination);
-    source.connect(hp).connect(comp).connect(delay).connect(reverb).connect(wetGain).connect(ctx.destination);
+    source.connect(preGain).connect(dryGain).connect(ctx.destination);
+    preGain.connect(hp).connect(comp).connect(delay).connect(reverb).connect(wetGain).connect(ctx.destination);
 
     // Record bus (clean after FX) — separate gains so monitor mute doesn’t kill recording
-    source.connect(recordDryGain);
+    preGain.connect(recordDryGain);
     hp.connect(comp).connect(delay).connect(reverb).connect(recordWetGain);
     recordDryGain.connect(recordBus);
     recordWetGain.connect(recordBus);
-    source.connect(analyser);
+    preGain.connect(analyser);
 
     animateVU();
     applyMix();
@@ -315,6 +322,11 @@ export default function Home() {
     recordDryGainRef.current.gain.value = 1 - mixRef.current;
   };
 
+  const applyInputGain = (value: number) => {
+    setInputGain(value);
+    if (preGainRef.current) preGainRef.current.gain.value = value;
+  };
+
   return (
     <main
       style={{
@@ -348,6 +360,18 @@ export default function Home() {
               Durdur
             </button>
           </div>
+          <label style={{ display: "block", marginTop: 10, fontSize: 12, opacity: 0.85 }}>
+            Input Gain ({inputGain.toFixed(1)}x)
+            <input
+              type="range"
+              min={0.6}
+              max={3}
+              step={0.1}
+              value={inputGain}
+              onChange={(e) => applyInputGain(parseFloat(e.target.value))}
+              style={{ width: "100%" }}
+            />
+          </label>
           <label style={{ display: "block", marginTop: 10, fontSize: 12, opacity: 0.85 }}>
             <input
               type="checkbox"

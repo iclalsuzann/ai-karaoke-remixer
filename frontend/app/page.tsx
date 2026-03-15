@@ -60,6 +60,7 @@ export default function Home() {
     setStatus("connecting");
     appendLog("Requesting mic access");
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordedChunksRef.current = [];
     setupLocalFx(stream);
     const mr = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
     mediaRecorderRef.current = mr;
@@ -73,12 +74,12 @@ export default function Home() {
         }
       }
     };
-    mr.onstop = () => {
+    mr.onstop = async () => {
       if (recordedChunksRef.current.length > 0) {
-        const blob = new Blob(recordedChunksRef.current, { type: "audio/webm" });
+        const url = await buildPlaybackUrl(recordedChunksRef.current);
         setPlayingUrl((prev) => {
           if (prev) URL.revokeObjectURL(prev);
-          return URL.createObjectURL(blob);
+          return url;
         });
         recordedChunksRef.current = [];
       }
@@ -184,6 +185,78 @@ export default function Home() {
     }
     setStatus("idle");
     appendLog("Stopped");
+  };
+
+  const buildPlaybackUrl = async (chunks: Blob[]) => {
+    const blob = new Blob(chunks, { type: "audio/webm;codecs=opus" });
+    const arrayBuffer = await blob.arrayBuffer();
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new AudioContext();
+    }
+    const decoded = await audioCtxRef.current.decodeAudioData(arrayBuffer.slice(0));
+    const wavBlob = audioBufferToWav(decoded);
+    return URL.createObjectURL(wavBlob);
+  };
+
+  const audioBufferToWav = (buffer: AudioBuffer) => {
+    const numOfChan = buffer.numberOfChannels;
+    const length = buffer.length * numOfChan * 2 + 44;
+    const result = new ArrayBuffer(length);
+    const view = new DataView(result);
+    let offset = 0;
+
+    const writeString = (s: string) => {
+      for (let i = 0; i < s.length; i++) view.setUint8(offset++, s.charCodeAt(i));
+    };
+
+    const floatTo16BitPCM = (channelData: Float32Array, offsetStart: number) => {
+      let pos = offsetStart;
+      for (let i = 0; i < channelData.length; i++, pos += 2) {
+        let s = Math.max(-1, Math.min(1, channelData[i]));
+        view.setInt16(pos, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      }
+      return pos;
+    };
+
+    writeString("RIFF");
+    view.setUint32(offset, length - 8, true);
+    offset += 4;
+    writeString("WAVE");
+    writeString("fmt ");
+    view.setUint32(offset, 16, true);
+    offset += 4;
+    view.setUint16(offset, 1, true);
+    offset += 2;
+    view.setUint16(offset, numOfChan, true);
+    offset += 2;
+    view.setUint32(offset, buffer.sampleRate, true);
+    offset += 4;
+    view.setUint32(offset, buffer.sampleRate * numOfChan * 2, true);
+    offset += 4;
+    view.setUint16(offset, numOfChan * 2, true);
+    offset += 2;
+    view.setUint16(offset, 16, true);
+    offset += 2;
+    writeString("data");
+    view.setUint32(offset, length - offset - 4, true);
+    offset += 4;
+
+    const channelData = [];
+    for (let i = 0; i < numOfChan; i++) {
+      channelData.push(buffer.getChannelData(i));
+    }
+
+    let interleavedOffset = offset;
+    for (let i = 0; i < buffer.length; i++) {
+      for (let channel = 0; channel < numOfChan; channel++) {
+        const sample = channelData[channel][i];
+        let s = Math.max(-1, Math.min(1, sample));
+        view.setInt16(interleavedOffset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        interleavedOffset += 2;
+      }
+    }
+
+    return new Blob([result], { type: "audio/wav" });
   };
 
   const toggleMonitor = (checked: boolean) => {

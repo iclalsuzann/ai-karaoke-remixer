@@ -18,6 +18,7 @@ export default function Home() {
   const wetGainRef = useRef<GainNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const recordBusRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const mixRef = useRef<number>(0.6);
   const [vu, setVu] = useState(0);
   const [lightColor, setLightColor] = useState("#9f7aea");
   const [monitorOn, setMonitorOn] = useState(true);
@@ -138,7 +139,7 @@ export default function Home() {
     reverb.buffer = makeImpulseResponse(ctx);
 
     const wetGain = ctx.createGain();
-    wetGain.gain.value = 0.8;
+    wetGain.gain.value = mixRef.current;
     wetGainRef.current = wetGain;
 
     const analyser = ctx.createAnalyser();
@@ -158,6 +159,7 @@ export default function Home() {
     source.connect(analyser);
 
     animateVU();
+    applyMix();
     return recordBus.stream;
   };
 
@@ -195,11 +197,8 @@ export default function Home() {
   };
 
   const setFxMix = (value: number) => {
-    if (!dryGainRef.current || !wetGainRef.current) return;
-    const dry = Math.max(0, Math.min(1, 1 - value));
-    const wet = Math.max(0, Math.min(1, value));
-    dryGainRef.current.gain.value = dry;
-    wetGainRef.current.gain.value = wet;
+    mixRef.current = Math.max(0, Math.min(1, value));
+    applyMix();
   };
 
   const stopStreaming = () => {
@@ -287,8 +286,15 @@ export default function Home() {
 
   const toggleMonitor = (checked: boolean) => {
     setMonitorOn(checked);
-    dryGainRef.current && (dryGainRef.current.gain.value = checked ? 0.9 : 0);
-    wetGainRef.current && (wetGainRef.current.gain.value = checked ? 0.8 : 0);
+    applyMix(checked);
+  };
+
+  const applyMix = (monitorState = monitorOn) => {
+    if (!dryGainRef.current || !wetGainRef.current) return;
+    const wet = monitorState ? mixRef.current : 0;
+    const dry = monitorState ? 1 - mixRef.current : 0;
+    dryGainRef.current.gain.value = dry;
+    wetGainRef.current.gain.value = wet;
   };
 
   return (

@@ -11,7 +11,7 @@ export default function Home() {
   const wsRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const lastSendRef = useRef<number>(0);
-  const audioQueueRef = useRef<Blob[]>([]);
+  const recordedChunksRef = useRef<Blob[]>([]);
   const [playingUrl, setPlayingUrl] = useState<string | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const dryGainRef = useRef<GainNode | null>(null);
@@ -19,6 +19,7 @@ export default function Home() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const [vu, setVu] = useState(0);
   const [lightColor, setLightColor] = useState("#9f7aea");
+  const [monitorOn, setMonitorOn] = useState(true);
 
   useEffect(() => {
     return () => {
@@ -44,8 +45,6 @@ export default function Home() {
         if (lastSendRef.current) {
           setLatencyMs(Math.round(performance.now() - lastSendRef.current));
         }
-        audioQueueRef.current.push(new Blob([event.data], { type: "audio/webm" }));
-        playBuffered();
       }
     };
     ws.onclose = () => {
@@ -54,17 +53,6 @@ export default function Home() {
     };
     ws.onerror = () => appendLog("WebSocket error");
     wsRef.current = ws;
-  };
-
-  const playBuffered = () => {
-    if (audioQueueRef.current.length === 0) return;
-    const next = audioQueueRef.current.shift();
-    if (!next) return;
-    const url = URL.createObjectURL(next);
-    setPlayingUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return url;
-    });
   };
 
   const startStreaming = async () => {
@@ -81,6 +69,7 @@ export default function Home() {
       if (e.data.size > 0) {
         lastSendRef.current = performance.now();
         wsRef.current.send(e.data);
+        recordedChunksRef.current.push(e.data);
       }
     };
     mr.start(200); // 200ms chunks
@@ -182,8 +171,22 @@ export default function Home() {
       wsRef.current.close();
       wsRef.current = null;
     }
+    if (recordedChunksRef.current.length > 0) {
+      const blob = new Blob(recordedChunksRef.current, { type: "audio/webm" });
+      setPlayingUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(blob);
+      });
+      recordedChunksRef.current = [];
+    }
     setStatus("idle");
     appendLog("Stopped");
+  };
+
+  const toggleMonitor = (checked: boolean) => {
+    setMonitorOn(checked);
+    dryGainRef.current && (dryGainRef.current.gain.value = checked ? dryGainRef.current.gain.value || 0.9 : 0);
+    wetGainRef.current && (wetGainRef.current.gain.value = checked ? wetGainRef.current.gain.value || 0.8 : 0);
   };
 
   return (
@@ -219,15 +222,24 @@ export default function Home() {
               Durdur
             </button>
           </div>
+          <label style={{ display: "block", marginTop: 10, fontSize: 12, opacity: 0.85 }}>
+            <input
+              type="checkbox"
+              checked={monitorOn}
+              onChange={(e) => toggleMonitor(e.target.checked)}
+              style={{ marginRight: 6 }}
+            />
+            Kendimi duymak (monitor). Eko rahatsız ediyorsa kapat.
+          </label>
 
           <div style={{ marginTop: 20 }}>
             <h3>Before / After</h3>
             <audio controls src={playingUrl ?? undefined} style={{ width: "100%", marginTop: 8 }} />
             <p style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
-              “Before”: doğrudan monitor; “After”: reverb+delay+compressor (basit stil efekti).
+              Kaydı durdurduktan sonra burada dinleyebilirsin. Canlı “After” efekti mikser kontrolü aşağıda.
             </p>
             <label style={{ display: "block", fontSize: 12, opacity: 0.8 }}>
-              After Mix
+              After Mix (canlı FX)
               <input
                 type="range"
                 min={0}

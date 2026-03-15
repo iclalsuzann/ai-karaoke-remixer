@@ -16,6 +16,8 @@ export default function Home() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const dryGainRef = useRef<GainNode | null>(null);
   const wetGainRef = useRef<GainNode | null>(null);
+  const recordDryGainRef = useRef<GainNode | null>(null);
+  const recordWetGainRef = useRef<GainNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const recordBusRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const mixRef = useRef<number>(0.6);
@@ -115,7 +117,7 @@ export default function Home() {
     recordBusRef.current = recordBus;
     const source = ctx.createMediaStreamSource(stream);
 
-    // Dry path (before)
+    // Monitor gains (to speakers)
     const dryGain = ctx.createGain();
     dryGain.gain.value = 0.9;
     dryGainRef.current = dryGain;
@@ -142,6 +144,12 @@ export default function Home() {
     wetGain.gain.value = mixRef.current;
     wetGainRef.current = wetGain;
 
+    // Record gains (to bus, unaffected by monitor mute)
+    const recordDryGain = ctx.createGain();
+    recordDryGainRef.current = recordDryGain;
+    const recordWetGain = ctx.createGain();
+    recordWetGainRef.current = recordWetGain;
+
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 1024;
     analyserRef.current = analyser;
@@ -151,11 +159,11 @@ export default function Home() {
     source.connect(dryGain).connect(ctx.destination);
     source.connect(hp).connect(comp).connect(delay).connect(reverb).connect(wetGain).connect(ctx.destination);
 
-    // Record bus (clean after FX)
-    source.connect(dryGain);
-    hp.connect(comp).connect(delay).connect(reverb).connect(wetGain);
-    dryGain.connect(recordBus);
-    wetGain.connect(recordBus);
+    // Record bus (clean after FX) — separate gains so monitor mute doesn’t kill recording
+    source.connect(recordDryGain);
+    hp.connect(comp).connect(delay).connect(reverb).connect(recordWetGain);
+    recordDryGain.connect(recordBus);
+    recordWetGain.connect(recordBus);
     source.connect(analyser);
 
     animateVU();
@@ -290,11 +298,21 @@ export default function Home() {
   };
 
   const applyMix = (monitorState = monitorOn) => {
-    if (!dryGainRef.current || !wetGainRef.current) return;
-    const wet = monitorState ? mixRef.current : 0;
-    const dry = monitorState ? 1 - mixRef.current : 0;
-    dryGainRef.current.gain.value = dry;
-    wetGainRef.current.gain.value = wet;
+    if (
+      !dryGainRef.current ||
+      !wetGainRef.current ||
+      !recordDryGainRef.current ||
+      !recordWetGainRef.current
+    )
+      return;
+    // Monitor path
+    const monitorWet = monitorState ? mixRef.current : 0;
+    const monitorDry = monitorState ? 1 - mixRef.current : 0;
+    dryGainRef.current.gain.value = monitorDry;
+    wetGainRef.current.gain.value = monitorWet;
+    // Record path (always on)
+    recordWetGainRef.current.gain.value = mixRef.current;
+    recordDryGainRef.current.gain.value = 1 - mixRef.current;
   };
 
   return (

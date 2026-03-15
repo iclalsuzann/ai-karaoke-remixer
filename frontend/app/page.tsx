@@ -55,6 +55,18 @@ export default function Home() {
     wsRef.current = ws;
   };
 
+  const pickMimeType = () => {
+    const preferred = [
+      "audio/webm;codecs=pcm",
+      "audio/webm;codecs=opus",
+      "audio/ogg;codecs=opus",
+    ];
+    for (const mt of preferred) {
+      if ((window as any).MediaRecorder && MediaRecorder.isTypeSupported(mt)) return mt;
+    }
+    return undefined;
+  };
+
   const startStreaming = async () => {
     if (status !== "idle") return;
     setStatus("connecting");
@@ -62,7 +74,10 @@ export default function Home() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     recordedChunksRef.current = [];
     setupLocalFx(stream);
-    const mr = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+    const mr = new MediaRecorder(stream, {
+      mimeType: pickMimeType(),
+      audioBitsPerSecond: 256_000,
+    });
     mediaRecorderRef.current = mr;
     connectWs();
     mr.ondataavailable = (e) => {
@@ -84,7 +99,7 @@ export default function Home() {
         recordedChunksRef.current = [];
       }
     };
-    mr.start(200); // 200ms chunks
+    mr.start(100); // 100ms chunks for smoother playback
     setStatus("recording");
     appendLog("Recording started");
   };

@@ -29,6 +29,7 @@ export default function Home() {
   const [monitorOn, setMonitorOn] = useState(false);
   const [inputGain, setInputGain] = useState(1.4);
   const [playbackGain, setPlaybackGain] = useState(1.2);
+  const [loudnessBoost, setLoudnessBoost] = useState(1.5);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   type EffectName = "echo" | "hall" | "robot" | "plate" | "lofi" | "chorus";
   const [selectedEffects, setSelectedEffects] = useState<Array<EffectName>>([]);
@@ -474,8 +475,9 @@ export default function Home() {
 
     source.start(0);
     const rendered = await ctx.startRendering();
-    const normalized = normalizeBuffer(rendered, 0.98);
-    const wavBlob = audioBufferToWav(normalized);
+    const normalized = normalizeBuffer(rendered, 0.995);
+    const boosted = applyGain(normalized, loudnessBoost);
+    const wavBlob = audioBufferToWav(boosted);
     const url = URL.createObjectURL(wavBlob);
     setPlayingUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -510,13 +512,29 @@ export default function Home() {
       }
     }
     if (peak < 1e-4) return buffer;
-    const gain = Math.min(targetPeak / peak, 3); // cap to avoid extreme boost
+    const gain = Math.min(targetPeak / peak, 6); // higher cap for mobile loudness
     const ctx = new AudioContext({ sampleRate: buffer.sampleRate });
     const out = ctx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
     for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
       const src = buffer.getChannelData(ch);
       const dst = out.getChannelData(ch);
       for (let i = 0; i < src.length; i++) dst[i] = src[i] * gain;
+    }
+    return out;
+  };
+
+  const applyGain = (buffer: AudioBuffer, gain: number) => {
+    if (gain === 1) return buffer;
+    const ctx = new AudioContext({ sampleRate: buffer.sampleRate });
+    const out = ctx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+    const g = Math.min(gain, 4); // additional cap to reduce clipping
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const src = buffer.getChannelData(ch);
+      const dst = out.getChannelData(ch);
+      for (let i = 0; i < src.length; i++) {
+        const v = src[i] * g;
+        dst[i] = Math.max(-0.99, Math.min(0.99, v)); // soft clamp
+      }
     }
     return out;
   };
@@ -592,7 +610,7 @@ export default function Home() {
             <input
               type="range"
               min={0}
-              max={2}
+              max={3}
               step={0.05}
               value={playbackGain}
               onChange={(e) => {
@@ -600,6 +618,18 @@ export default function Home() {
                 setPlaybackGain(v);
                 if (audioRef.current) audioRef.current.volume = Math.min(1, v);
               }}
+              style={{ width: "100%" }}
+            />
+          </label>
+          <label style={{ display: "block", marginTop: 10, fontSize: 12, opacity: 0.85 }}>
+            Kayıt Loudness Boost (render)
+            <input
+              type="range"
+              min={1}
+              max={3.5}
+              step={0.1}
+              value={loudnessBoost}
+              onChange={(e) => setLoudnessBoost(parseFloat(e.target.value))}
               style={{ width: "100%" }}
             />
           </label>

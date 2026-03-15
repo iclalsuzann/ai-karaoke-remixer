@@ -28,6 +28,8 @@ export default function Home() {
   const [lightColor, setLightColor] = useState("#9f7aea");
   const [monitorOn, setMonitorOn] = useState(false);
   const [inputGain, setInputGain] = useState(1.4);
+  const [playbackGain, setPlaybackGain] = useState(0.95);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   type EffectName = "echo" | "hall" | "robot" | "plate" | "lofi" | "chorus";
   const [selectedEffects, setSelectedEffects] = useState<Array<EffectName>>([]);
   const originalBufferRef = useRef<AudioBuffer | null>(null);
@@ -476,6 +478,10 @@ export default function Home() {
       if (prev) URL.revokeObjectURL(prev);
       return url;
     });
+    if (audioRef.current) {
+      audioRef.current.load();
+      audioRef.current.volume = playbackGain;
+    }
     setIsRendering(false);
   };
 
@@ -558,6 +564,22 @@ export default function Home() {
             />
           </label>
           <label style={{ display: "block", marginTop: 10, fontSize: 12, opacity: 0.85 }}>
+            Playback Ses Seviyesi
+            <input
+              type="range"
+              min={0}
+              max={1.5}
+              step={0.05}
+              value={playbackGain}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setPlaybackGain(v);
+                if (audioRef.current) audioRef.current.volume = Math.min(1, v);
+              }}
+              style={{ width: "100%" }}
+            />
+          </label>
+          <label style={{ display: "block", marginTop: 10, fontSize: 12, opacity: 0.85 }}>
             Canlı FX Denge (Monitor)
             <input
               type="range"
@@ -572,7 +594,15 @@ export default function Home() {
 
           <div style={{ marginTop: 20 }}>
             <h3>Before / After</h3>
-            <audio controls src={playingUrl ?? undefined} style={{ width: "100%", marginTop: 8 }} />
+            <audio
+              ref={audioRef}
+              controls
+              src={playingUrl ?? undefined}
+              style={{ width: "100%", marginTop: 8 }}
+              onLoadedMetadata={() => {
+                if (audioRef.current) audioRef.current.volume = playbackGain;
+              }}
+            />
             <p style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
               Kaydı durdurduktan sonra burada dinleyebilirsin. Canlı “After” efekti mikser kontrolü aşağıda.
             </p>

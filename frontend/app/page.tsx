@@ -22,10 +22,16 @@ export default function Home() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const recordBusRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const mixRef = useRef<number>(0.6);
+  const recordFxMixRef = useRef(0.25); // portion of FX sent to recording
   const [vu, setVu] = useState(0);
   const [lightColor, setLightColor] = useState("#9f7aea");
-  const [monitorOn, setMonitorOn] = useState(true);
+  const [monitorOn, setMonitorOn] = useState(false);
   const [inputGain, setInputGain] = useState(1.4);
+  const [selectedEffect, setSelectedEffect] = useState<"clean" | "echo" | "hall" | "robot">(
+    "clean"
+  );
+  const originalBufferRef = useRef<AudioBuffer | null>(null);
+  const [isRendering, setIsRendering] = useState(false);
   const recordFxMixRef = useRef(0.25); // portion of FX sent to recording
 
   useEffect(() => {
@@ -106,11 +112,9 @@ export default function Home() {
     };
     mr.onstop = async () => {
       if (recordedChunksRef.current.length > 0) {
-        const url = await buildPlaybackUrl(recordedChunksRef.current);
-        setPlayingUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return url;
-        });
+        const buffer = await buildDecodedBuffer(recordedChunksRef.current);
+        originalBufferRef.current = buffer;
+        await renderEffect(buffer, selectedEffect);
         recordedChunksRef.current = [];
       }
     };
@@ -187,8 +191,8 @@ export default function Home() {
     return recordBus.stream;
   };
 
-  const makeImpulseResponse = (ctx: AudioContext) => {
-    const length = ctx.sampleRate * 0.9;
+  const makeImpulseResponse = (ctx: BaseAudioContext, seconds = 0.9) => {
+    const length = ctx.sampleRate * seconds;
     const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
     for (let channel = 0; channel < 2; channel++) {
       const buf = impulse.getChannelData(channel);
@@ -236,15 +240,13 @@ export default function Home() {
     appendLog("Stopped");
   };
 
-  const buildPlaybackUrl = async (chunks: Blob[]) => {
+  const buildDecodedBuffer = async (chunks: Blob[]) => {
     const blob = new Blob(chunks, { type: "audio/webm;codecs=opus" });
     const arrayBuffer = await blob.arrayBuffer();
     if (!audioCtxRef.current) {
       audioCtxRef.current = new AudioContext();
     }
-    const decoded = await audioCtxRef.current.decodeAudioData(arrayBuffer.slice(0));
-    const wavBlob = audioBufferToWav(decoded);
-    return URL.createObjectURL(wavBlob);
+    return await audioCtxRef.current.decodeAudioData(arrayBuffer.slice(0));
   };
 
   const audioBufferToWav = (buffer: AudioBuffer) => {
@@ -336,6 +338,75 @@ export default function Home() {
     if (preGainRef.current) preGainRef.current.gain.value = value;
   };
 
+  useEffect(() => {
+    if (originalBufferRef.current) {
+      renderEffect(originalBufferRef.current, selectedEffect);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEffect]);
+
+  const renderEffect = async (buffer: AudioBuffer, effect: typeof selectedEffect) => {
+    setIsRendering(true);
+    const ctx = new OfflineAudioContext(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+
+    const dryGain = ctx.createGain();
+    dryGain.gain.value = 0.9;
+
+    const wetGain = ctx.createGain();
+    wetGain.gain.value = 0.7;
+
+    // effect chains
+    if (effect === "clean") {
+      source.connect(dryGain).connect(ctx.destination);
+    } else if (effect === "echo") {
+      const delay = ctx.createDelay();
+      delay.delayTime.value = 0.22;
+      const fb = ctx.createGain();
+      fb.gain.value = 0.32;
+      delay.connect(fb).connect(delay);
+      source.connect(delay);
+      delay.connect(wetGain).connect(ctx.destination);
+      source.connect(dryGain).connect(ctx.destination);
+    } else if (effect === "hall") {
+      const conv = ctx.createConvolver();
+      conv.buffer = makeImpulseResponse(ctx, 1.6);
+      source.connect(conv).connect(wetGain).connect(ctx.destination);
+      source.connect(dryGain).connect(ctx.destination);
+    } else if (effect === "robot") {
+      const bitCrusher = ctx.createWaveShaper();
+      bitCrusher.curve = makeDistortionCurve(35);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 1800;
+      source.connect(bitCrusher).connect(lp).connect(wetGain).connect(ctx.destination);
+      source.connect(dryGain).connect(ctx.destination);
+    }
+
+    source.start(0);
+    const rendered = await ctx.startRendering();
+    const wavBlob = audioBufferToWav(rendered);
+    const url = URL.createObjectURL(wavBlob);
+    setPlayingUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
+    setIsRendering(false);
+  };
+
+  const makeDistortionCurve = (amount: number) => {
+    const k = typeof amount === "number" ? amount : 50;
+    const n_samples = 44100;
+    const curve = new Float32Array(n_samples);
+    const deg = Math.PI / 180;
+    for (let i = 0; i < n_samples; ++i) {
+      const x = (i * 2) / n_samples - 1;
+      curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+    }
+    return curve;
+  };
+
   return (
     <main
       style={{
@@ -412,6 +483,29 @@ export default function Home() {
             <p style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
               Kaydı durdurduktan sonra burada dinleyebilirsin. Canlı “After” efekti mikser kontrolü aşağıda.
             </p>
+            <label style={{ display: "block", fontSize: 12, opacity: 0.8, marginBottom: 8 }}>
+              Kayıt efekti
+              <select
+                value={selectedEffect}
+                onChange={(e) => setSelectedEffect(e.target.value as typeof selectedEffect)}
+                style={{ width: "100%", marginTop: 6 }}
+              >
+                <option value="clean">Temiz (dry)</option>
+                <option value="echo">Eko</option>
+                <option value="hall">Hall Reverb</option>
+                <option value="robot">Robot / Distortion</option>
+              </select>
+            </label>
+            <button
+              className="button"
+              style={{ width: "100%", opacity: isRendering ? 0.6 : 1 }}
+              onClick={() => {
+                if (originalBufferRef.current) renderEffect(originalBufferRef.current, selectedEffect);
+              }}
+              disabled={!originalBufferRef.current || isRendering}
+            >
+              {isRendering ? "Render ediliyor..." : "Kaydı efektiyle yeniden üret"}
+            </button>
             <label style={{ display: "block", fontSize: 12, opacity: 0.8 }}>
               After Mix (canlı FX)
               <input

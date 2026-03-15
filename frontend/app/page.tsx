@@ -581,38 +581,56 @@ export default function Home() {
                 </button>
               ))}
             </div>
-            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 8 }}>
-              Kayıt efektleri (birden fazla seçilebilir)
-              {["echo", "hall", "plate", "chorus", "lofi", "robot"].map((ef) => (
-                <label key={ef} style={{ display: "block", marginTop: 4 }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedEffects.includes(ef as any)}
-                    onChange={(e) => {
-                      const val = ef as EffectName;
-                      setSelectedPreset(null);
-                      setSelectedEffects((prev) =>
-                        e.target.checked ? [...prev, val] : prev.filter((p) => p !== val)
-                      );
-                    }}
-                    style={{ marginRight: 6 }}
-                  />
-                  {ef === "echo"
-                    ? "Eko"
-                    : ef === "hall"
-                    ? "Hall Reverb"
-                    : ef === "plate"
-                    ? "Plate Reverb"
-                    : ef === "chorus"
-                    ? "Chorus"
-                    : ef === "lofi"
-                    ? "Lo-Fi"
-                    : "Robot / Distortion"}
-                </label>
-              ))}
+            <div style={{ fontSize: 12, opacity: 0.9, marginBottom: 8, marginTop: 12 }}>
+              Efektler (birden fazla seçilebilir)
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 6, marginTop: 6 }}>
+                {["echo", "hall", "plate", "chorus", "lofi", "robot"].map((ef) => (
+                  <label key={ef} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", background: "rgba(255,255,255,0.04)", borderRadius: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedEffects.includes(ef as any)}
+                      onChange={(e) => {
+                        const val = ef as EffectName;
+                        setSelectedPreset(null);
+                        setSelectedEffects((prev) =>
+                          e.target.checked ? [...prev, val] : prev.filter((p) => p !== val)
+                        );
+                      }}
+                    />
+                    <span>
+                      {ef === "echo"
+                        ? "Eko"
+                        : ef === "hall"
+                        ? "Hall Reverb"
+                        : ef === "plate"
+                        ? "Plate Reverb"
+                        : ef === "chorus"
+                        ? "Chorus"
+                        : ef === "lofi"
+                        ? "Lo-Fi"
+                        : "Robot / Distortion"}
+                    </span>
+                  </label>
+                ))}
+              </div>
               {isRendering && <p style={{ marginTop: 6 }}>Efekt render ediliyor...</p>}
             </div>
-            <label style={{ display: "block", fontSize: 12, opacity: 0.8 }}>
+          </div>
+
+          <div className="card" style={{ marginTop: 12 }}>
+            <label style={{ display: "block", fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
+              Kayıt Efekt Seviyesi ({Math.round(recordFxMix * 100)}%)
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={recordFxMix}
+                onChange={(e) => setRecordFxMix(parseFloat(e.target.value))}
+                style={{ width: "100%" }}
+              />
+            </label>
+            <label style={{ display: "block", fontSize: 12, opacity: 0.85 }}>
               Canlı FX Denge (Monitor)
               <input
                 type="range"
@@ -674,14 +692,6 @@ export default function Home() {
         </section>
       </div>
 
-      <section className="card" style={{ marginTop: 16 }}>
-        <h2 style={{ marginTop: 0 }}>Sonraki Adımlar</h2>
-        <ul>
-          <li>Noise suppression + pitch correction pipeline (RNNoise + torch/onnxruntime).</li>
-          <li>Voice conversion modeli (tek sanatçı preset’i) ve “After” kanalı.</li>
-          <li>Beat detection ve ışık pattern JSON üretimi + frontend önizleme.</li>
-        </ul>
-      </section>
     </main>
   );
 }

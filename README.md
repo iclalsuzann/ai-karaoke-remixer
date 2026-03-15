@@ -10,6 +10,7 @@ Tarayıcıda canlı sesini yakalayıp kayıt sonrası çoklu efektlerle yeniden 
 - Kayıt efekt seviyesi (wet mix) ve canlı FX dengesi slider’ları.
 - Basit ışık önizleme barı (ses enerjisi tepki veriyor).
 - WebSocket RTT göstergesi; WS yoksa lokal kayıt devam eder.
+- Backend’te opsiyonel ONNX denoiser kancası: `models/denoise.onnx` eklersen WS akışında gürültü azaltma uygulanır (yoksa passthrough).
 
 ## Çalıştırma (lokal)
 Backend (echo WS)  
@@ -32,6 +33,7 @@ Varsayılan WS: `ws://localhost:8000/ws/audio`.
 ## Canlı Yayın Önerisi
 - Backend: Railway/Render/Fly’de `uvicorn main:app --host 0.0.0.0 --port $PORT`.
 - Frontend: Vercel’de root `frontend/`, env `NEXT_PUBLIC_WS_URL=wss://<backend>/ws/audio`.
+- Eğer ONNX denoiser kullanacaksan: `models/denoise.onnx` dosyasını backend’le birlikte deploy et; gerekirse env `DENOISER_MODEL=/app/models/denoise.onnx` tanımla.
 
 ## Notlar
 - Şu an backend sadece echo yapıyor; efektler tarayıcı içinde offline render ediliyor.

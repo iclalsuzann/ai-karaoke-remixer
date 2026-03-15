@@ -28,7 +28,7 @@ export default function Home() {
   const [lightColor, setLightColor] = useState("#9f7aea");
   const [monitorOn, setMonitorOn] = useState(false);
   const [inputGain, setInputGain] = useState(1.4);
-  const [playbackGain, setPlaybackGain] = useState(0.95);
+  const [playbackGain, setPlaybackGain] = useState(1.2);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   type EffectName = "echo" | "hall" | "robot" | "plate" | "lofi" | "chorus";
   const [selectedEffects, setSelectedEffects] = useState<Array<EffectName>>([]);
@@ -474,7 +474,8 @@ export default function Home() {
 
     source.start(0);
     const rendered = await ctx.startRendering();
-    const wavBlob = audioBufferToWav(rendered);
+    const normalized = normalizeBuffer(rendered, 0.98);
+    const wavBlob = audioBufferToWav(normalized);
     const url = URL.createObjectURL(wavBlob);
     setPlayingUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -482,7 +483,7 @@ export default function Home() {
     });
     if (audioRef.current) {
       audioRef.current.load();
-      audioRef.current.volume = playbackGain;
+      audioRef.current.volume = Math.min(1, playbackGain);
     }
     setIsRendering(false);
   };
@@ -497,6 +498,27 @@ export default function Home() {
       curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
     }
     return curve;
+  };
+
+  const normalizeBuffer = (buffer: AudioBuffer, targetPeak = 0.98) => {
+    let peak = 0;
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const data = buffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const v = Math.abs(data[i]);
+        if (v > peak) peak = v;
+      }
+    }
+    if (peak < 1e-4) return buffer;
+    const gain = Math.min(targetPeak / peak, 3); // cap to avoid extreme boost
+    const ctx = new AudioContext({ sampleRate: buffer.sampleRate });
+    const out = ctx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const src = buffer.getChannelData(ch);
+      const dst = out.getChannelData(ch);
+      for (let i = 0; i < src.length; i++) dst[i] = src[i] * gain;
+    }
+    return out;
   };
 
   return (
@@ -570,7 +592,7 @@ export default function Home() {
             <input
               type="range"
               min={0}
-              max={1.5}
+              max={2}
               step={0.05}
               value={playbackGain}
               onChange={(e) => {

@@ -500,9 +500,9 @@ export default function Home() {
         margin: "0 auto",
       }}
     >
-      <h1 style={{ fontSize: 32, marginBottom: 12 }}>AI Karaoke Remixer</h1>
-      <p style={{ opacity: 0.8, marginBottom: 24 }}>
-        WebRTC/WebSocket prototipi + tarayıcı içi “After” efekt zinciri (reverb + delay + comp).
+      <h1 style={{ fontSize: 32, marginBottom: 8 }}>AI Karaoke Remixer</h1>
+      <p style={{ opacity: 0.85, marginBottom: 20, fontSize: 15 }}>
+        Canlı sesini yakala, kayıt sonrası çoklu efekt preset’leriyle yeniden şekillendir; hepsi tarayıcıda, anında.
       </p>
 
       <div className="grid" style={{ gridTemplateColumns: "1.2fr 1fr" }}>

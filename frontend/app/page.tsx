@@ -26,7 +26,7 @@ export default function Home() {
   const [lightColor, setLightColor] = useState("#9f7aea");
   const [monitorOn, setMonitorOn] = useState(true);
   const [inputGain, setInputGain] = useState(1.4);
-  const cleanRecordMix = useRef(1); // record bus dry fraction
+  const recordFxMixRef = useRef(0.25); // portion of FX sent to recording
 
   useEffect(() => {
     return () => {
@@ -178,7 +178,7 @@ export default function Home() {
     // Record bus (clean) — capture dry only for clarity
     preGain.connect(recordDryGain);
     recordDryGain.connect(recordBus);
-    recordWetGain.gain.value = 0;
+    recordWetGain.gain.value = recordFxMixRef.current;
     recordWetGain.connect(recordBus);
     preGain.connect(analyser);
 
@@ -327,8 +327,8 @@ export default function Home() {
     dryGainRef.current.gain.value = monitorDry;
     wetGainRef.current.gain.value = monitorWet;
     // Record path (always on)
-    recordWetGainRef.current.gain.value = 0; // record clean
-    recordDryGainRef.current.gain.value = cleanRecordMix.current;
+    recordWetGainRef.current.gain.value = recordFxMixRef.current;
+    recordDryGainRef.current.gain.value = 1 - recordFxMixRef.current;
   };
 
   const applyInputGain = (value: number) => {
@@ -389,6 +389,21 @@ export default function Home() {
               style={{ marginRight: 6 }}
             />
             Kendimi duymak (monitor). Eko rahatsız ediyorsa kapat.
+          </label>
+          <label style={{ display: "block", marginTop: 10, fontSize: 12, opacity: 0.85 }}>
+            Kayıt FX karışımı ({Math.round(recordFxMixRef.current * 100)}% ıslak)
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              defaultValue={recordFxMixRef.current}
+              onChange={(e) => {
+                recordFxMixRef.current = parseFloat(e.target.value);
+                applyMix();
+              }}
+              style={{ width: "100%" }}
+            />
           </label>
 
           <div style={{ marginTop: 20 }}>

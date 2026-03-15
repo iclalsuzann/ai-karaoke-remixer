@@ -31,10 +31,24 @@ export default function Home() {
   const [selectedEffects, setSelectedEffects] = useState<Array<"echo" | "hall" | "robot">>([]);
   const originalBufferRef = useRef<AudioBuffer | null>(null);
   const [isRendering, setIsRendering] = useState(false);
+  const [recordFxMix, setRecordFxMix] = useState(0.5);
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+  const presets = [
+    { key: "pop_live", label: "Pop Live", effects: ["echo", "hall"] as const, wet: 0.55 },
+    { key: "studio_tight", label: "Studio Tight", effects: ["hall"] as const, wet: 0.35 },
+    { key: "big_robot", label: "Robot Vox", effects: ["robot"] as const, wet: 0.65 },
+    { key: "arena", label: "Arena Echo", effects: ["echo", "hall", "robot"] as const, wet: 0.7 },
+  ];
 
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
+
+  useEffect(() => {
+    recordFxMixRef.current = recordFxMix;
+    applyMix();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordFxMix]);
 
   useEffect(() => {
     return () => {
@@ -233,6 +247,14 @@ export default function Home() {
   const setFxMix = (value: number) => {
     mixRef.current = Math.max(0, Math.min(1, value));
     applyMix();
+  };
+
+  const applyPreset = (key: string) => {
+    const preset = presets.find((p) => p.key === key);
+    if (!preset) return;
+    setSelectedPreset(key);
+    setSelectedEffects([...preset.effects]);
+    setRecordFxMix(preset.wet);
   };
 
   const stopStreaming = () => {
@@ -491,20 +513,17 @@ export default function Home() {
             Kendimi duymak (monitor). Eko rahatsız ediyorsa kapat.
           </label>
           <label style={{ display: "block", marginTop: 10, fontSize: 12, opacity: 0.85 }}>
-            Kayıt FX karışımı ({Math.round(recordFxMixRef.current * 100)}% ıslak)
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              defaultValue={recordFxMixRef.current}
-              onChange={(e) => {
-                recordFxMixRef.current = parseFloat(e.target.value);
-                applyMix();
-              }}
-              style={{ width: "100%" }}
-            />
-          </label>
+              Kayıt FX karışımı ({Math.round(recordFxMix * 100)}% ıslak)
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={recordFxMix}
+                onChange={(e) => setRecordFxMix(parseFloat(e.target.value))}
+                style={{ width: "100%" }}
+              />
+            </label>
 
           <div style={{ marginTop: 20 }}>
             <h3>Before / After</h3>
@@ -512,6 +531,23 @@ export default function Home() {
             <p style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
               Kaydı durdurduktan sonra burada dinleyebilirsin. Canlı “After” efekti mikser kontrolü aşağıda.
             </p>
+            <div style={{ marginBottom: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {presets.map((p) => (
+                <button
+                  key={p.key}
+                  className="button"
+                  style={{
+                    padding: "8px 10px",
+                    fontSize: 12,
+                    opacity: selectedPreset === p.key ? 1 : 0.8,
+                    border: selectedPreset === p.key ? "1px solid #f472b6" : "1px solid transparent",
+                  }}
+                  onClick={() => applyPreset(p.key)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
             <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 8 }}>
               Kayıt efektleri (birden fazla seçilebilir)
               {["echo", "hall", "robot"].map((ef) => (
@@ -521,6 +557,7 @@ export default function Home() {
                     checked={selectedEffects.includes(ef as any)}
                     onChange={(e) => {
                       const val = ef as "echo" | "hall" | "robot";
+                      setSelectedPreset(null);
                       setSelectedEffects((prev) =>
                         e.target.checked ? [...prev, val] : prev.filter((p) => p !== val)
                       );

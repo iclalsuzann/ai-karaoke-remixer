@@ -6,6 +6,7 @@ type Status = "idle" | "recording" | "connecting" | "streaming";
 
 export default function Home() {
   const [status, setStatus] = useState<Status>("idle");
+  const statusRef = useRef<Status>("idle");
   const [log, setLog] = useState<string[]>([]);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -32,6 +33,10 @@ export default function Home() {
   );
   const originalBufferRef = useRef<AudioBuffer | null>(null);
   const [isRendering, setIsRendering] = useState(false);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   useEffect(() => {
     return () => {
@@ -61,9 +66,13 @@ export default function Home() {
     };
     ws.onclose = () => {
       appendLog("WebSocket closed");
-      setStatus("idle");
+      if (statusRef.current === "recording") {
+        appendLog("Devam: WS kapalı, sadece lokal kayıt");
+      } else {
+        setStatus("idle");
+      }
     };
-    ws.onerror = () => appendLog("WebSocket error");
+    ws.onerror = () => appendLog("WebSocket error (lokal kayda devam)");
     wsRef.current = ws;
   };
 

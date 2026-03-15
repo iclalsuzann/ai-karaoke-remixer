@@ -26,6 +26,7 @@ export default function Home() {
   const [lightColor, setLightColor] = useState("#9f7aea");
   const [monitorOn, setMonitorOn] = useState(true);
   const [inputGain, setInputGain] = useState(1.4);
+  const cleanRecordMix = useRef(1); // record bus dry fraction
 
   useEffect(() => {
     return () => {
@@ -77,12 +78,20 @@ export default function Home() {
     if (status !== "idle") return;
     setStatus("connecting");
     appendLog("Requesting mic access");
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        sampleRate: 48000,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+    });
     recordedChunksRef.current = [];
     const recordStream = setupLocalFx(stream);
     const mr = new MediaRecorder(recordStream, {
       mimeType: pickMimeType(),
-      audioBitsPerSecond: 256_000,
+      audioBitsPerSecond: 512_000,
     });
     mediaRecorderRef.current = mr;
     connectWs();
@@ -105,7 +114,7 @@ export default function Home() {
         recordedChunksRef.current = [];
       }
     };
-    mr.start(100); // 100ms chunks for smoother playback
+    mr.start(50); // 50ms chunks for smoother playback
     setStatus("recording");
     appendLog("Recording started");
   };
@@ -166,10 +175,10 @@ export default function Home() {
     source.connect(preGain).connect(dryGain).connect(ctx.destination);
     preGain.connect(hp).connect(comp).connect(delay).connect(reverb).connect(wetGain).connect(ctx.destination);
 
-    // Record bus (clean after FX) — separate gains so monitor mute doesn’t kill recording
+    // Record bus (clean) — capture dry only for clarity
     preGain.connect(recordDryGain);
-    hp.connect(comp).connect(delay).connect(reverb).connect(recordWetGain);
     recordDryGain.connect(recordBus);
+    recordWetGain.gain.value = 0;
     recordWetGain.connect(recordBus);
     preGain.connect(analyser);
 
@@ -318,8 +327,8 @@ export default function Home() {
     dryGainRef.current.gain.value = monitorDry;
     wetGainRef.current.gain.value = monitorWet;
     // Record path (always on)
-    recordWetGainRef.current.gain.value = mixRef.current;
-    recordDryGainRef.current.gain.value = 1 - mixRef.current;
+    recordWetGainRef.current.gain.value = 0; // record clean
+    recordDryGainRef.current.gain.value = cleanRecordMix.current;
   };
 
   const applyInputGain = (value: number) => {

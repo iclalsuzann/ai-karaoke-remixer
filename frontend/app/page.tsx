@@ -505,7 +505,7 @@ export default function Home() {
         Canlı sesini yakala, kayıt sonrası çoklu efekt preset’leriyle yeniden şekillendir; hepsi tarayıcıda, anında.
       </p>
 
-      <div className="grid" style={{ gridTemplateColumns: "1.2fr 1fr" }}>
+      <div className="grid" style={{ gridTemplateColumns: "1fr" }}>
         <section className="card">
           <h2 style={{ marginTop: 0 }}>Canlı Akış</h2>
           <p style={{ marginBottom: 12 }}>
@@ -654,25 +654,6 @@ export default function Home() {
             <p style={{ fontSize: 12, opacity: 0.7 }}>
               RMS tabanlı vurgu; backend beat/onset geldiğinde DMX/WLED’e gönderilecek.
             </p>
-          </div>
-        </section>
-
-        <section className="card">
-          <h2 style={{ marginTop: 0 }}>Log</h2>
-          <div
-            style={{
-              fontFamily: "monospace",
-              fontSize: 12,
-              whiteSpace: "pre-wrap",
-              background: "rgba(0,0,0,0.3)",
-              padding: 12,
-              borderRadius: 8,
-              minHeight: 180,
-            }}
-          >
-            {log.slice().reverse().map((l, idx) => (
-              <div key={idx}>{l}</div>
-            ))}
           </div>
         </section>
       </div>

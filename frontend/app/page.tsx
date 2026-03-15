@@ -651,9 +651,6 @@ export default function Home() {
                 transition: "width 60ms linear",
               }}
             />
-            <p style={{ fontSize: 12, opacity: 0.7 }}>
-              RMS tabanlı vurgu; backend beat/onset geldiğinde DMX/WLED’e gönderilecek.
-            </p>
           </div>
         </section>
       </div>

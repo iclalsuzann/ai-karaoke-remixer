@@ -557,6 +557,18 @@ export default function Home() {
               style={{ width: "100%" }}
             />
           </label>
+          <label style={{ display: "block", marginTop: 10, fontSize: 12, opacity: 0.85 }}>
+            Canlı FX Denge (Monitor)
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              defaultValue={0.6}
+              onChange={(e) => setFxMix(parseFloat(e.target.value))}
+              style={{ width: "100%" }}
+            />
+          </label>
 
           <div style={{ marginTop: 20 }}>
             <h3>Before / After</h3>
@@ -615,33 +627,6 @@ export default function Home() {
               </div>
               {isRendering && <p style={{ marginTop: 6 }}>Efekt render ediliyor...</p>}
             </div>
-          </div>
-
-          <div className="card" style={{ marginTop: 12 }}>
-            <label style={{ display: "block", fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
-              Kayıt Efekt Seviyesi ({Math.round(recordFxMix * 100)}%)
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={recordFxMix}
-                onChange={(e) => setRecordFxMix(parseFloat(e.target.value))}
-                style={{ width: "100%" }}
-              />
-            </label>
-            <label style={{ display: "block", fontSize: 12, opacity: 0.85 }}>
-              Canlı FX Denge (Monitor)
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                defaultValue={0.6}
-                onChange={(e) => setFxMix(parseFloat(e.target.value))}
-                style={{ width: "100%" }}
-              />
-            </label>
           </div>
 
           <div style={{ marginTop: 20 }}>

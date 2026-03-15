@@ -1,5 +1,7 @@
 # AI Karaoke Remixer
 
+Live mic → **AI noise reduction (RNN/GTCRN)** → WebSocket → effects & playback. Portfolio demo: WebAudio, real-time denoising, modern UI.
+
 Tarayıcıda canlı sesini yakalayıp kayıt sonrası çoklu efektlerle yeniden şekillendiren demo. Portföy odaklı: WebAudio işleme, WebSocket akışı ve modern UI’ı bir arada gösterir.
 
 ## Mevcut Özellikler
@@ -11,6 +13,7 @@ Tarayıcıda canlı sesini yakalayıp kayıt sonrası çoklu efektlerle yeniden 
 - Basit ışık önizleme barı (ses enerjisi tepki veriyor).
 - WebSocket RTT göstergesi; WS yoksa lokal kayıt devam eder.
 - Backend’te opsiyonel ONNX denoiser kancası: `models/denoise.onnx` eklersen WS akışında gürültü azaltma uygulanır (yoksa passthrough).
+- **RNN denoiser (GTCRN):** `cd backend && python download_rnn_denoiser.py` ile 16 kHz uyumlu GTCRN ONNX modeli `models/denoise.onnx` olarak indirilir.
 
 ## Çalıştırma (lokal)
 Backend (echo WS)  

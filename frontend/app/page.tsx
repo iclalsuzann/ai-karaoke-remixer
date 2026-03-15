@@ -32,7 +32,6 @@ export default function Home() {
   );
   const originalBufferRef = useRef<AudioBuffer | null>(null);
   const [isRendering, setIsRendering] = useState(false);
-  const recordFxMixRef = useRef(0.25); // portion of FX sent to recording
 
   useEffect(() => {
     return () => {

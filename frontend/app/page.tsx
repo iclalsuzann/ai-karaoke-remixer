@@ -23,7 +23,7 @@ export default function Home() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const recordBusRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const mixRef = useRef<number>(0.6);
-  const recordFxMixRef = useRef(0.25); // portion of FX sent to recording
+  const recordFxMixRef = useRef(0.5); // portion of FX sent to recording
   const [vu, setVu] = useState(0);
   const [lightColor, setLightColor] = useState("#9f7aea");
   const [monitorOn, setMonitorOn] = useState(false);
@@ -361,7 +361,7 @@ export default function Home() {
     dryGain.gain.value = 0.9;
 
     const wetGain = ctx.createGain();
-    wetGain.gain.value = 0.7;
+    wetGain.gain.value = 1.0;
 
     // dry always on
     source.connect(dryGain).connect(ctx.destination);
@@ -386,28 +386,29 @@ export default function Home() {
     effects.forEach((effect) => {
       if (effect === "echo") {
         const delay = ctx.createDelay();
-        delay.delayTime.value = 0.22;
+        delay.delayTime.value = 0.28;
         const fb = ctx.createGain();
-        fb.gain.value = 0.32;
+        fb.gain.value = 0.55;
         delay.connect(fb).connect(delay);
         const tap = ctx.createGain();
-        tap.gain.value = 0.7;
+        tap.gain.value = 1.1;
         source.connect(delay);
         delay.connect(tap).connect(wetMerge);
       } else if (effect === "hall") {
         const conv = ctx.createConvolver();
-        conv.buffer = makeImpulseResponse(ctx, 1.6);
+        conv.buffer = makeImpulseResponse(ctx, 2.5);
         const tap = ctx.createGain();
-        tap.gain.value = 0.9;
+        tap.gain.value = 1.2;
         source.connect(conv).connect(tap).connect(wetMerge);
       } else if (effect === "robot") {
         const bitCrusher = ctx.createWaveShaper();
-        bitCrusher.curve = makeDistortionCurve(35);
+        bitCrusher.curve = makeDistortionCurve(65);
         const lp = ctx.createBiquadFilter();
-        lp.type = "lowpass";
-        lp.frequency.value = 1800;
+        lp.type = "bandpass";
+        lp.frequency.value = 1400;
+        lp.Q.value = 1.2;
         const tap = ctx.createGain();
-        tap.gain.value = 0.8;
+        tap.gain.value = 1.0;
         source.connect(bitCrusher).connect(lp).connect(tap).connect(wetMerge);
       }
     });

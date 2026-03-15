@@ -28,16 +28,19 @@ export default function Home() {
   const [lightColor, setLightColor] = useState("#9f7aea");
   const [monitorOn, setMonitorOn] = useState(false);
   const [inputGain, setInputGain] = useState(1.4);
-  const [selectedEffects, setSelectedEffects] = useState<Array<"echo" | "hall" | "robot">>([]);
+  type EffectName = "echo" | "hall" | "robot" | "plate" | "lofi" | "chorus";
+  const [selectedEffects, setSelectedEffects] = useState<Array<EffectName>>([]);
   const originalBufferRef = useRef<AudioBuffer | null>(null);
   const [isRendering, setIsRendering] = useState(false);
   const [recordFxMix, setRecordFxMix] = useState(0.5);
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
-  const presets = [
-    { key: "pop_live", label: "Pop Live", effects: ["echo", "hall"] as const, wet: 0.55 },
-    { key: "studio_tight", label: "Studio Tight", effects: ["hall"] as const, wet: 0.35 },
-    { key: "big_robot", label: "Robot Vox", effects: ["robot"] as const, wet: 0.65 },
-    { key: "arena", label: "Arena Echo", effects: ["echo", "hall", "robot"] as const, wet: 0.7 },
+  const presets: { key: string; label: string; effects: EffectName[]; wet: number }[] = [
+    { key: "pop_live", label: "Pop Live", effects: ["echo", "hall"], wet: 0.55 },
+    { key: "studio_tight", label: "Studio Tight", effects: ["hall"], wet: 0.35 },
+    { key: "big_robot", label: "Robot Vox", effects: ["robot", "chorus"], wet: 0.65 },
+    { key: "arena", label: "Arena Echo", effects: ["echo", "hall", "chorus"], wet: 0.7 },
+    { key: "lofi_tape", label: "Lo-Fi Tape", effects: ["lofi", "chorus"], wet: 0.6 },
+    { key: "plate_shimmer", label: "Plate Shine", effects: ["plate", "echo"], wet: 0.6 },
   ];
 
   useEffect(() => {
@@ -373,7 +376,7 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEffects]);
 
-  const renderEffect = async (buffer: AudioBuffer, effects: Array<"echo" | "hall" | "robot">) => {
+  const renderEffect = async (buffer: AudioBuffer, effects: Array<EffectName>) => {
     setIsRendering(true);
     const ctx = new OfflineAudioContext(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
     const source = ctx.createBufferSource();
@@ -422,6 +425,12 @@ export default function Home() {
         const tap = ctx.createGain();
         tap.gain.value = 1.2;
         source.connect(conv).connect(tap).connect(wetMerge);
+      } else if (effect === "plate") {
+        const conv = ctx.createConvolver();
+        conv.buffer = makeImpulseResponse(ctx, 1.2);
+        const tap = ctx.createGain();
+        tap.gain.value = 1.1;
+        source.connect(conv).connect(tap).connect(wetMerge);
       } else if (effect === "robot") {
         const bitCrusher = ctx.createWaveShaper();
         bitCrusher.curve = makeDistortionCurve(65);
@@ -432,6 +441,30 @@ export default function Home() {
         const tap = ctx.createGain();
         tap.gain.value = 1.0;
         source.connect(bitCrusher).connect(lp).connect(tap).connect(wetMerge);
+      } else if (effect === "lofi") {
+        const crusher = ctx.createWaveShaper();
+        crusher.curve = makeDistortionCurve(18);
+        const lp = ctx.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.value = 3200;
+        const hp = ctx.createBiquadFilter();
+        hp.type = "highpass";
+        hp.frequency.value = 120;
+        const tap = ctx.createGain();
+        tap.gain.value = 1.05;
+        source.connect(crusher).connect(lp).connect(hp).connect(tap).connect(wetMerge);
+      } else if (effect === "chorus") {
+        const delay = ctx.createDelay();
+        delay.delayTime.value = 0.018;
+        const lfo = ctx.createOscillator();
+        lfo.frequency.value = 0.35;
+        const lfoGain = ctx.createGain();
+        lfoGain.gain.value = 0.008;
+        lfo.connect(lfoGain).connect(delay.delayTime);
+        lfo.start(0);
+        const tap = ctx.createGain();
+        tap.gain.value = 0.8;
+        source.connect(delay).connect(tap).connect(wetMerge);
       }
     });
 
@@ -513,17 +546,17 @@ export default function Home() {
             Kendimi duymak (monitor). Eko rahatsız ediyorsa kapat.
           </label>
           <label style={{ display: "block", marginTop: 10, fontSize: 12, opacity: 0.85 }}>
-              Kayıt FX karışımı ({Math.round(recordFxMix * 100)}% ıslak)
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={recordFxMix}
-                onChange={(e) => setRecordFxMix(parseFloat(e.target.value))}
-                style={{ width: "100%" }}
-              />
-            </label>
+            Kayıt Efekt Seviyesi ({Math.round(recordFxMix * 100)}%)
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={recordFxMix}
+              onChange={(e) => setRecordFxMix(parseFloat(e.target.value))}
+              style={{ width: "100%" }}
+            />
+          </label>
 
           <div style={{ marginTop: 20 }}>
             <h3>Before / After</h3>
@@ -550,13 +583,13 @@ export default function Home() {
             </div>
             <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 8 }}>
               Kayıt efektleri (birden fazla seçilebilir)
-              {["echo", "hall", "robot"].map((ef) => (
+              {["echo", "hall", "plate", "chorus", "lofi", "robot"].map((ef) => (
                 <label key={ef} style={{ display: "block", marginTop: 4 }}>
                   <input
                     type="checkbox"
                     checked={selectedEffects.includes(ef as any)}
                     onChange={(e) => {
-                      const val = ef as "echo" | "hall" | "robot";
+                      const val = ef as EffectName;
                       setSelectedPreset(null);
                       setSelectedEffects((prev) =>
                         e.target.checked ? [...prev, val] : prev.filter((p) => p !== val)
@@ -568,13 +601,19 @@ export default function Home() {
                     ? "Eko"
                     : ef === "hall"
                     ? "Hall Reverb"
+                    : ef === "plate"
+                    ? "Plate Reverb"
+                    : ef === "chorus"
+                    ? "Chorus"
+                    : ef === "lofi"
+                    ? "Lo-Fi"
                     : "Robot / Distortion"}
                 </label>
               ))}
               {isRendering && <p style={{ marginTop: 6 }}>Efekt render ediliyor...</p>}
             </div>
             <label style={{ display: "block", fontSize: 12, opacity: 0.8 }}>
-              After Mix (canlı FX)
+              Canlı FX Denge (Monitor)
               <input
                 type="range"
                 min={0}

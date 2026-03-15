@@ -28,9 +28,7 @@ export default function Home() {
   const [lightColor, setLightColor] = useState("#9f7aea");
   const [monitorOn, setMonitorOn] = useState(false);
   const [inputGain, setInputGain] = useState(1.4);
-  const [selectedEffect, setSelectedEffect] = useState<"clean" | "echo" | "hall" | "robot">(
-    "clean"
-  );
+  const [selectedEffects, setSelectedEffects] = useState<Array<"echo" | "hall" | "robot">>([]);
   const originalBufferRef = useRef<AudioBuffer | null>(null);
   const [isRendering, setIsRendering] = useState(false);
 
@@ -122,7 +120,7 @@ export default function Home() {
       if (recordedChunksRef.current.length > 0) {
         const buffer = await buildDecodedBuffer(recordedChunksRef.current);
         originalBufferRef.current = buffer;
-        await renderEffect(buffer, selectedEffect);
+        await renderEffect(buffer, selectedEffects);
         recordedChunksRef.current = [];
       }
     };
@@ -348,12 +346,12 @@ export default function Home() {
 
   useEffect(() => {
     if (originalBufferRef.current) {
-      renderEffect(originalBufferRef.current, selectedEffect);
+      renderEffect(originalBufferRef.current, selectedEffects);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEffect]);
+  }, [selectedEffects]);
 
-  const renderEffect = async (buffer: AudioBuffer, effect: typeof selectedEffect) => {
+  const renderEffect = async (buffer: AudioBuffer, effects: Array<"echo" | "hall" | "robot">) => {
     setIsRendering(true);
     const ctx = new OfflineAudioContext(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
     const source = ctx.createBufferSource();
@@ -365,32 +363,54 @@ export default function Home() {
     const wetGain = ctx.createGain();
     wetGain.gain.value = 0.7;
 
-    // effect chains
-    if (effect === "clean") {
-      source.connect(dryGain).connect(ctx.destination);
-    } else if (effect === "echo") {
-      const delay = ctx.createDelay();
-      delay.delayTime.value = 0.22;
-      const fb = ctx.createGain();
-      fb.gain.value = 0.32;
-      delay.connect(fb).connect(delay);
-      source.connect(delay);
-      delay.connect(wetGain).connect(ctx.destination);
-      source.connect(dryGain).connect(ctx.destination);
-    } else if (effect === "hall") {
-      const conv = ctx.createConvolver();
-      conv.buffer = makeImpulseResponse(ctx, 1.6);
-      source.connect(conv).connect(wetGain).connect(ctx.destination);
-      source.connect(dryGain).connect(ctx.destination);
-    } else if (effect === "robot") {
-      const bitCrusher = ctx.createWaveShaper();
-      bitCrusher.curve = makeDistortionCurve(35);
-      const lp = ctx.createBiquadFilter();
-      lp.type = "lowpass";
-      lp.frequency.value = 1800;
-      source.connect(bitCrusher).connect(lp).connect(wetGain).connect(ctx.destination);
-      source.connect(dryGain).connect(ctx.destination);
+    // dry always on
+    source.connect(dryGain).connect(ctx.destination);
+
+    if (effects.length === 0) {
+      source.start(0);
+      const rendered = await ctx.startRendering();
+      const wavBlob = audioBufferToWav(rendered);
+      const url = URL.createObjectURL(wavBlob);
+      setPlayingUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
+      setIsRendering(false);
+      return;
     }
+
+    const wetMerge = ctx.createGain();
+    wetMerge.gain.value = 1;
+    wetMerge.connect(wetGain).connect(ctx.destination);
+
+    effects.forEach((effect) => {
+      if (effect === "echo") {
+        const delay = ctx.createDelay();
+        delay.delayTime.value = 0.22;
+        const fb = ctx.createGain();
+        fb.gain.value = 0.32;
+        delay.connect(fb).connect(delay);
+        const tap = ctx.createGain();
+        tap.gain.value = 0.7;
+        source.connect(delay);
+        delay.connect(tap).connect(wetMerge);
+      } else if (effect === "hall") {
+        const conv = ctx.createConvolver();
+        conv.buffer = makeImpulseResponse(ctx, 1.6);
+        const tap = ctx.createGain();
+        tap.gain.value = 0.9;
+        source.connect(conv).connect(tap).connect(wetMerge);
+      } else if (effect === "robot") {
+        const bitCrusher = ctx.createWaveShaper();
+        bitCrusher.curve = makeDistortionCurve(35);
+        const lp = ctx.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.value = 1800;
+        const tap = ctx.createGain();
+        tap.gain.value = 0.8;
+        source.connect(bitCrusher).connect(lp).connect(tap).connect(wetMerge);
+      }
+    });
 
     source.start(0);
     const rendered = await ctx.startRendering();
@@ -491,29 +511,30 @@ export default function Home() {
             <p style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
               Kaydı durdurduktan sonra burada dinleyebilirsin. Canlı “After” efekti mikser kontrolü aşağıda.
             </p>
-            <label style={{ display: "block", fontSize: 12, opacity: 0.8, marginBottom: 8 }}>
-              Kayıt efekti
-              <select
-                value={selectedEffect}
-                onChange={(e) => setSelectedEffect(e.target.value as typeof selectedEffect)}
-                style={{ width: "100%", marginTop: 6 }}
-              >
-                <option value="clean">Temiz (dry)</option>
-                <option value="echo">Eko</option>
-                <option value="hall">Hall Reverb</option>
-                <option value="robot">Robot / Distortion</option>
-              </select>
-            </label>
-            <button
-              className="button"
-              style={{ width: "100%", opacity: isRendering ? 0.6 : 1 }}
-              onClick={() => {
-                if (originalBufferRef.current) renderEffect(originalBufferRef.current, selectedEffect);
-              }}
-              disabled={!originalBufferRef.current || isRendering}
-            >
-              {isRendering ? "Render ediliyor..." : "Kaydı efektiyle yeniden üret"}
-            </button>
+            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 8 }}>
+              Kayıt efektleri (birden fazla seçilebilir)
+              {["echo", "hall", "robot"].map((ef) => (
+                <label key={ef} style={{ display: "block", marginTop: 4 }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedEffects.includes(ef as any)}
+                    onChange={(e) => {
+                      const val = ef as "echo" | "hall" | "robot";
+                      setSelectedEffects((prev) =>
+                        e.target.checked ? [...prev, val] : prev.filter((p) => p !== val)
+                      );
+                    }}
+                    style={{ marginRight: 6 }}
+                  />
+                  {ef === "echo"
+                    ? "Eko"
+                    : ef === "hall"
+                    ? "Hall Reverb"
+                    : "Robot / Distortion"}
+                </label>
+              ))}
+              {isRendering && <p style={{ marginTop: 6 }}>Efekt render ediliyor...</p>}
+            </div>
             <label style={{ display: "block", fontSize: 12, opacity: 0.8 }}>
               After Mix (canlı FX)
               <input
